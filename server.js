@@ -138,6 +138,26 @@ app.post("/api/login", async (req, res) => {
   }
 });
 
+app.post("/api/change-password", async (req, res) => {
+  try {
+    const { email, oldPassword, newPassword } = req.body;
+
+    const user = await User.findOne({ email, password: oldPassword });
+
+    if (!user) {
+      return res.status(400).json({ message: "Old password is incorrect" });
+    }
+
+    user.password = newPassword;
+    await user.save();
+
+    res.json({ message: "Password updated successfully" });
+
+  } catch (err) {
+    res.status(500).json({ message: "Error changing password" });
+  }
+});
+
 /* ================= USERS ================= */
 app.get("/api/users", async (req, res) => {
   try {
