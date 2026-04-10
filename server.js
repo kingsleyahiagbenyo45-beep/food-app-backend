@@ -39,7 +39,8 @@ mongoose.connection.on("error", (err) => {
 const userSchema = new mongoose.Schema({
   email: String,
   password: String,
-  role: { type: String, default: "user" }
+  role: { type: String, default: "user" },
+  createdAt: { type: Date, default: Date.now }
 });
 
 const foodSchema = new mongoose.Schema({
@@ -179,29 +180,29 @@ app.get("/api/foods", async (req, res) => {
 });
 
 /* ================= ORDERS ================= */
-app.post("/api/order", async (req, res) => {
+app.get("/api/users", async (req, res) => {
   try {
-    const order = await Order.create(req.body);
+    const users = await User.find({}, "-password"); // removes password field safely
 
-    io.emit("newOrder", order);
-
-    res.json({
-      message: "Order placed",
-      receipt: order
-    });
-
+    res.json(users);
   } catch (err) {
-    console.log(err.message);
-    res.status(500).json({ message: "Order error" });
+    res.status(500).json({ message: "Users error" });
   }
 });
 
-app.get("/api/orders", async (req, res) => {
+app.put("/api/order/:id", async (req, res) => {
   try {
-    const orders = await Order.find().sort({ _id: -1 });
-    res.json(orders);
+    const { status } = req.body;
+
+    const order = await Order.findByIdAndUpdate(
+      req.params.id,
+      { status },
+      { new: true }
+    );
+
+    res.json(order);
   } catch (err) {
-    res.status(500).json({ message: "Orders error" });
+    res.status(500).json({ message: "Update failed" });
   }
 });
 
