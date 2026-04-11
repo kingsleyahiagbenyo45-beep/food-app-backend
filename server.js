@@ -8,12 +8,20 @@ const nodemailer = require("nodemailer");
 const axios = require("axios");
 const { Server } = require("socket.io");
 
-const app = express();
+const JWT_SECRET = process.env.JWT_SECRET || "chopspot_super_secret_jwt_key_2024_kingsley";
+const MONGO_URI  = process.env.MONGO_URI  || "mongodb+srv://Kingsley_Kekeli:dbPassword%24@cluster0.qgbdn7x.mongodb.net/foodapp?retryWrites=true&w=majority";
+const EMAIL_USER = process.env.EMAIL_USER || "";
+const EMAIL_PASS = process.env.EMAIL_PASS || "";
+const PAYSTACK_SECRET = process.env.PAYSTACK_SECRET || "";
+const ADMIN_EMAIL     = process.env.ADMIN_EMAIL     || "admin@foodapp.com";
+const ADMIN_PASSWORD  = process.env.ADMIN_PASSWORD  || "Admin1234!";
+const FRONTEND_URL    = process.env.FRONTEND_URL    || "https://kingsleyahiagbenyo45-beep.github.io/food-app-frontend";
 
+const app = express();
 app.use(cors());
 app.use(express.json());
 
-mongoose.connect(process.env.MONGO_URI, {
+mongoose.connect(MONGO_URI, {
   serverSelectionTimeoutMS: 5000,
   socketTimeoutMS: 45000,
   maxPoolSize: 10,
@@ -23,48 +31,48 @@ mongoose.connect(process.env.MONGO_URI, {
 .catch(err => console.log("❌ MongoDB Error:", err.message));
 
 mongoose.connection.on("disconnected", () => console.log("⚠️ MongoDB disconnected..."));
-mongoose.connection.on("reconnected", () => console.log("✅ MongoDB reconnected"));
-mongoose.connection.on("error", (err) => console.log("❌ MongoDB error:", err.message));
+mongoose.connection.on("reconnected",  () => console.log("✅ MongoDB reconnected"));
+mongoose.connection.on("error", (err)  => console.log("❌ MongoDB error:", err.message));
 
 const userSchema = new mongoose.Schema({
-  email: { type: String, required: true, unique: true, lowercase: true, trim: true },
-  password: { type: String, required: true },
-  role: { type: String, default: "user", enum: ["user", "admin"] },
+  email:     { type: String, required: true, unique: true, lowercase: true, trim: true },
+  password:  { type: String, required: true },
+  role:      { type: String, default: "user", enum: ["user", "admin"] },
   createdAt: { type: Date, default: Date.now }
 });
 
 const foodSchema = new mongoose.Schema({
-  name: { type: String, required: true },
-  price: { type: Number, required: true },
-  category: { type: String, default: "General" },
+  name:        { type: String, required: true },
+  price:       { type: Number, required: true },
+  category:    { type: String, default: "General" },
   description: { type: String, default: "" },
-  image: { type: String, default: "" },
-  inStock: { type: Boolean, default: true },
-  quantity: { type: Number, default: 100 }
+  image:       { type: String, default: "" },
+  inStock:     { type: Boolean, default: true },
+  quantity:    { type: Number, default: 100 }
 });
 
 const orderSchema = new mongoose.Schema({
-  customerName: { type: String, required: true },
+  customerName:  { type: String, required: true },
   customerEmail: { type: String, default: "" },
-  location: { type: String, required: true },
+  location:      { type: String, required: true },
   paymentMethod: { type: String, default: "Cash" },
   paymentStatus: { type: String, default: "pending", enum: ["pending", "paid", "failed"] },
-  paystackRef: { type: String, default: "" },
-  items: { type: Array, default: [] },
-  total: { type: Number, required: true },
-  status: { type: String, default: "pending", enum: ["pending", "processing", "ready", "delivered", "cancelled"] },
-  createdAt: { type: Date, default: Date.now }
+  paystackRef:   { type: String, default: "" },
+  items:         { type: Array, default: [] },
+  total:         { type: Number, required: true },
+  status:        { type: String, default: "pending", enum: ["pending", "processing", "ready", "delivered", "cancelled"] },
+  createdAt:     { type: Date, default: Date.now }
 });
 
-const User = mongoose.model("User", userSchema);
-const Food = mongoose.model("Food", foodSchema);
+const User  = mongoose.model("User",  userSchema);
+const Food  = mongoose.model("Food",  foodSchema);
 const Order = mongoose.model("Order", orderSchema);
 
 function authMiddleware(req, res, next) {
   const token = req.headers.authorization?.split(" ")[1];
   if (!token) return res.status(401).json({ message: "No token provided" });
   try {
-    const decoded = jwt.verify(token, process.env.JWT_SECRET);
+    const decoded = jwt.verify(token, JWT_SECRET);
     req.user = decoded;
     next();
   } catch (err) {
@@ -81,17 +89,15 @@ function adminMiddleware(req, res, next) {
 
 const transporter = nodemailer.createTransport({
   service: "gmail",
-  auth: {
-    user: process.env.EMAIL_USER,
-    pass: process.env.EMAIL_PASS
-  }
+  auth: { user: EMAIL_USER, pass: EMAIL_PASS }
 });
 
 async function sendOrderEmail(to, order) {
   try {
+    if (!EMAIL_USER || !EMAIL_PASS) return;
     const itemsList = order.items.map(i => `• ${i.name} — ₵${i.price}`).join("\n");
     await transporter.sendMail({
-      from: `"🍔 ChopSpot" <${process.env.EMAIL_USER}>`,
+      from: `"🍔 ChopSpot" <${EMAIL_USER}>`,
       to,
       subject: `Order Confirmed — ₵${order.total}`,
       html: `
@@ -116,10 +122,11 @@ async function sendOrderEmail(to, order) {
 
 async function sendStatusEmail(to, order) {
   try {
+    if (!EMAIL_USER || !EMAIL_PASS) return;
     const statusColors = { processing: "#f48c06", ready: "#2d6cdf", delivered: "#2dc653", cancelled: "#e63946" };
     const color = statusColors[order.status] || "#888";
     await transporter.sendMail({
-      from: `"🍔 ChopSpot" <${process.env.EMAIL_USER}>`,
+      from: `"🍔 ChopSpot" <${EMAIL_USER}>`,
       to,
       subject: `Order Update — ${order.status.toUpperCase()}`,
       html: `
@@ -150,19 +157,19 @@ async function seed() {
     const foodCount = await Food.countDocuments();
     if (foodCount === 0) {
       await Food.insertMany([
-        { name: "Jollof Rice", price: 25, category: "Rice", description: "Smoky West African jollof rice", inStock: true, quantity: 50 },
-        { name: "Fufu & Soup", price: 30, category: "Traditional", description: "Pounded fufu with light soup", inStock: true, quantity: 30 },
-        { name: "Fried Rice", price: 22, category: "Rice", description: "Seasoned fried rice with veggies", inStock: true, quantity: 40 },
-        { name: "Grilled Chicken", price: 45, category: "Protein", description: "Juicy grilled chicken quarters", inStock: true, quantity: 20 },
-        { name: "Waakye", price: 18, category: "Traditional", description: "Rice and beans with shito", inStock: true, quantity: 60 },
-        { name: "Burger", price: 35, category: "Fast Food", description: "Beef burger with chips", inStock: true, quantity: 25 }
+        { name: "Jollof Rice",     price: 25, category: "Rice",       description: "Smoky West African jollof rice",    inStock: true, quantity: 50 },
+        { name: "Fufu & Soup",     price: 30, category: "Traditional", description: "Pounded fufu with light soup",      inStock: true, quantity: 30 },
+        { name: "Fried Rice",      price: 22, category: "Rice",       description: "Seasoned fried rice with veggies",  inStock: true, quantity: 40 },
+        { name: "Grilled Chicken", price: 45, category: "Protein",    description: "Juicy grilled chicken quarters",    inStock: true, quantity: 20 },
+        { name: "Waakye",          price: 18, category: "Traditional", description: "Rice and beans with shito",         inStock: true, quantity: 60 },
+        { name: "Burger",          price: 35, category: "Fast Food",  description: "Beef burger with chips",            inStock: true, quantity: 25 }
       ]);
       console.log("🌱 Foods seeded");
     }
-    const adminExists = await User.findOne({ email: process.env.ADMIN_EMAIL || "admin@foodapp.com" });
+    const adminExists = await User.findOne({ email: ADMIN_EMAIL });
     if (!adminExists) {
-      const hashed = await bcrypt.hash(process.env.ADMIN_PASSWORD || "Admin1234!", 12);
-      await User.create({ email: process.env.ADMIN_EMAIL || "admin@foodapp.com", password: hashed, role: "admin" });
+      const hashed = await bcrypt.hash(ADMIN_PASSWORD, 12);
+      await User.create({ email: ADMIN_EMAIL, password: hashed, role: "admin" });
       console.log("🌱 Admin seeded");
     }
   } catch (err) {
@@ -175,15 +182,15 @@ app.post("/api/signup", async (req, res) => {
   try {
     const { email, password } = req.body;
     if (!email || !password) return res.status(400).json({ message: "Email and password required" });
-    if (password.length < 6) return res.status(400).json({ message: "Password must be at least 6 characters" });
+    if (password.length < 6)  return res.status(400).json({ message: "Password must be at least 6 characters" });
     const exists = await User.findOne({ email: email.toLowerCase() });
     if (exists) return res.status(400).json({ message: "Email already registered" });
     const hashed = await bcrypt.hash(password, 12);
-    const user = await User.create({ email: email.toLowerCase(), password: hashed });
-    const token = jwt.sign({ id: user._id, email: user.email, role: user.role }, process.env.JWT_SECRET, { expiresIn: "7d" });
+    const user   = await User.create({ email: email.toLowerCase(), password: hashed });
+    const token  = jwt.sign({ id: user._id, email: user.email, role: user.role }, JWT_SECRET, { expiresIn: "7d" });
     res.status(201).json({ token, email: user.email, role: user.role });
   } catch (err) {
-    console.log(err.message);
+    console.log("Signup error:", err.message);
     res.status(500).json({ message: "Signup error" });
   }
 });
@@ -192,14 +199,14 @@ app.post("/api/login", async (req, res) => {
   try {
     const { email, password } = req.body;
     if (!email || !password) return res.status(400).json({ message: "Email and password required" });
-    const user = await User.findOne({ email: email.toLowerCase() });
-    if (!user) return res.status(401).json({ message: "Invalid email or password" });
+    const user  = await User.findOne({ email: email.toLowerCase() });
+    if (!user)  return res.status(401).json({ message: "Invalid email or password" });
     const valid = await bcrypt.compare(password, user.password);
     if (!valid) return res.status(401).json({ message: "Invalid email or password" });
-    const token = jwt.sign({ id: user._id, email: user.email, role: user.role }, process.env.JWT_SECRET, { expiresIn: "7d" });
+    const token = jwt.sign({ id: user._id, email: user.email, role: user.role }, JWT_SECRET, { expiresIn: "7d" });
     res.json({ token, email: user.email, role: user.role });
   } catch (err) {
-    console.log(err.message);
+    console.log("Login error:", err.message);
     res.status(500).json({ message: "Login error" });
   }
 });
@@ -208,8 +215,8 @@ app.post("/api/change-password", authMiddleware, async (req, res) => {
   try {
     const { oldPassword, newPassword } = req.body;
     if (!oldPassword || !newPassword) return res.status(400).json({ message: "All fields required" });
-    if (newPassword.length < 6) return res.status(400).json({ message: "New password too short" });
-    const user = await User.findById(req.user.id);
+    if (newPassword.length < 6)       return res.status(400).json({ message: "New password too short" });
+    const user  = await User.findById(req.user.id);
     const valid = await bcrypt.compare(oldPassword, user.password);
     if (!valid) return res.status(400).json({ message: "Old password incorrect" });
     user.password = await bcrypt.hash(newPassword, 12);
@@ -226,21 +233,23 @@ app.post("/api/forgot-password", async (req, res) => {
     const user = await User.findOne({ email: email.toLowerCase() });
     if (!user) return res.status(404).json({ message: "Email not found" });
     const tempPass = Math.random().toString(36).slice(-8);
-    user.password = await bcrypt.hash(tempPass, 12);
+    user.password  = await bcrypt.hash(tempPass, 12);
     await user.save();
-    await transporter.sendMail({
-      from: `"🍔 ChopSpot" <${process.env.EMAIL_USER}>`,
-      to: email,
-      subject: "Password Reset",
-      html: `
-        <div style="font-family:Arial,sans-serif;max-width:500px;margin:auto;padding:30px;border:1px solid #eee;border-radius:12px;">
-          <h2>Password Reset</h2>
-          <p>Your temporary password is:</p>
-          <div style="font-size:24px;font-weight:bold;background:#f4f6f9;padding:16px;border-radius:8px;letter-spacing:4px;text-align:center;">${tempPass}</div>
-          <p style="margin-top:16px;color:#888;">Please login and change your password immediately.</p>
-        </div>
-      `
-    });
+    if (EMAIL_USER && EMAIL_PASS) {
+      await transporter.sendMail({
+        from: `"🍔 ChopSpot" <${EMAIL_USER}>`,
+        to: email,
+        subject: "Password Reset",
+        html: `
+          <div style="font-family:Arial,sans-serif;max-width:500px;margin:auto;padding:30px;border:1px solid #eee;border-radius:12px;">
+            <h2>Password Reset</h2>
+            <p>Your temporary password is:</p>
+            <div style="font-size:24px;font-weight:bold;background:#f4f6f9;padding:16px;border-radius:8px;letter-spacing:4px;text-align:center;">${tempPass}</div>
+            <p style="margin-top:16px;color:#888;">Please login and change your password immediately.</p>
+          </div>
+        `
+      });
+    }
     res.json({ message: "Temporary password sent to your email" });
   } catch (err) {
     res.status(500).json({ message: "Error sending reset email" });
@@ -332,7 +341,7 @@ app.post("/api/order", authMiddleware, async (req, res) => {
     if (order.customerEmail) sendOrderEmail(order.customerEmail, order);
     res.status(201).json(order);
   } catch (err) {
-    console.log(err.message);
+    console.log("Order error:", err.message);
     res.status(500).json({ message: "Error placing order" });
   }
 });
@@ -398,10 +407,10 @@ app.post("/api/paystack/initialize", authMiddleware, async (req, res) => {
         amount: Math.round(amount * 100),
         currency: "GHS",
         reference: `FOOD-${orderId}-${Date.now()}`,
-        callback_url: `${process.env.FRONTEND_URL}/payment-success.html`,
+        callback_url: `${FRONTEND_URL}/payment-success.html`,
         metadata: { orderId }
       },
-      { headers: { Authorization: `Bearer ${process.env.PAYSTACK_SECRET}`, "Content-Type": "application/json" } }
+      { headers: { Authorization: `Bearer ${PAYSTACK_SECRET}`, "Content-Type": "application/json" } }
     );
     res.json(response.data.data);
   } catch (err) {
@@ -414,7 +423,7 @@ app.get("/api/paystack/verify/:reference", authMiddleware, async (req, res) => {
   try {
     const response = await axios.get(
       `https://api.paystack.co/transaction/verify/${req.params.reference}`,
-      { headers: { Authorization: `Bearer ${process.env.PAYSTACK_SECRET}` } }
+      { headers: { Authorization: `Bearer ${PAYSTACK_SECRET}` } }
     );
     const data = response.data.data;
     if (data.status === "success") {
