@@ -12,8 +12,7 @@ const JWT_SECRET = process.env.JWT_SECRET || "chopspot_super_secret_jwt_key_2024
 const MONGO_URI  = process.env.MONGO_URI  || "mongodb+srv://Kingsley_Kekeli:dbPassword%24@cluster0.qgbdn7x.mongodb.net/foodapp?retryWrites=true&w=majority";
 const EMAIL_USER = process.env.EMAIL_USER || "";
 const EMAIL_PASS = process.env.EMAIL_PASS || "";
-const PAYSTACK_SECRET = process.env.PAYSTACK_SECRET || "";
-const ADMIN_EMAIL     = process.env.ADMIN_EMAIL     || "admin@foodapp.com";
+const PAYSTACK_SECRET = process.env.PAYSTACK_SECRET || "sk_test_f8c72938263bab20bc65e734d2c24fbd3ab74324";const ADMIN_EMAIL     = process.env.ADMIN_EMAIL     || "admin@foodapp.com";
 const ADMIN_PASSWORD  = process.env.ADMIN_PASSWORD  || "Admin1234!";
 const FRONTEND_URL    = process.env.FRONTEND_URL    || "https://kingsleyahiagbenyo45-beep.github.io/food-app-frontend";
 
