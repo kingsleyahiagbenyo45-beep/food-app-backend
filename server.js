@@ -4,19 +4,21 @@ const http = require("http");
 const mongoose = require("mongoose");
 const bcrypt = require("bcryptjs");
 const jwt = require("jsonwebtoken");
-const nodemailer = require("nodemailer");
+const { Resend } = require("resend");
 const axios = require("axios");
 const { Server } = require("socket.io");
 
-const JWT_SECRET = process.env.JWT_SECRET || "chopspot_super_secret_jwt_key_2024_kingsley";
-const MONGO_URI  = process.env.MONGO_URI  || "mongodb+srv://Kingsley_Kekeli:dbPassword%24@cluster0.qgbdn7x.mongodb.net/foodapp?retryWrites=true&w=majority";
-const EMAIL_USER = process.env.EMAIL_USER || "";
-const EMAIL_PASS = process.env.EMAIL_PASS || "";
-const PAYSTACK_SECRET = process.env.PAYSTACK_SECRET || "sk_test_f8c72938263bab20bc65e734d2c24fbd3ab74324";const ADMIN_EMAIL     = process.env.ADMIN_EMAIL     || "admin@foodapp.com";
-const ADMIN_PASSWORD  = process.env.ADMIN_PASSWORD  || "Admin1234!";
-const FRONTEND_URL    = process.env.FRONTEND_URL    || "https://kingsleyahiagbenyo45-beep.github.io/food-app-frontend";
+const JWT_SECRET      = process.env.JWT_SECRET      || "chopspot_super_secret_jwt_key_2024_kingsley";
+const MONGO_URI       = process.env.MONGO_URI        || "mongodb+srv://Kingsley_Kekeli:dbPassword%24@cluster0.qgbdn7x.mongodb.net/foodapp?retryWrites=true&w=majority";
+const RESEND_API_KEY  = process.env.RESEND_API_KEY   || "re_LsbFJkGC_FkpNJ7cGW7AwmH6cRdiBpSh6";
+const PAYSTACK_SECRET = process.env.PAYSTACK_SECRET  || "sk_test_f8c72938263bab20bc65e734d2c24fbd3ab74324";
+const ADMIN_EMAIL     = process.env.ADMIN_EMAIL      || "admin@foodapp.com";
+const ADMIN_PASSWORD  = process.env.ADMIN_PASSWORD   || "Admin1234!";
+const FRONTEND_URL    = process.env.FRONTEND_URL     || "https://kingsleyahiagbenyo45-beep.github.io/food-app-frontend";
 
-const app = express();
+const app    = express();
+const resend = new Resend(RESEND_API_KEY);
+
 app.use(cors());
 app.use(express.json());
 
@@ -37,6 +39,8 @@ const userSchema = new mongoose.Schema({
   email:     { type: String, required: true, unique: true, lowercase: true, trim: true },
   password:  { type: String, required: true },
   role:      { type: String, default: "user", enum: ["user", "admin"] },
+  username:  { type: String, default: "" },
+  phone:     { type: String, default: "" },
   createdAt: { type: Date, default: Date.now }
 });
 
@@ -53,6 +57,7 @@ const foodSchema = new mongoose.Schema({
 const orderSchema = new mongoose.Schema({
   customerName:  { type: String, required: true },
   customerEmail: { type: String, default: "" },
+  customerPhone: { type: String, default: "" },
   location:      { type: String, required: true },
   paymentMethod: { type: String, default: "Cash" },
   paymentStatus: { type: String, default: "pending", enum: ["pending", "paid", "failed"] },
@@ -86,26 +91,20 @@ function adminMiddleware(req, res, next) {
   next();
 }
 
-const transporter = nodemailer.createTransport({
-  service: "gmail",
-  auth: { user: EMAIL_USER, pass: EMAIL_PASS }
-});
-
 async function sendOrderEmail(to, order) {
   try {
-    if (!EMAIL_USER || !EMAIL_PASS) return;
-    const itemsList = order.items.map(i => `• ${i.name} — ₵${i.price}`).join("\n");
-    await transporter.sendMail({
-      from: `"🍔 ChopSpot" <${EMAIL_USER}>`,
+    const itemsList = order.items.map(i => `<li>${i.name} — ₵${i.price}</li>`).join("");
+    await resend.emails.send({
+      from: "ChopSpot <onboarding@resend.dev>",
       to,
       subject: `Order Confirmed — ₵${order.total}`,
       html: `
         <div style="font-family:Arial,sans-serif;max-width:500px;margin:auto;padding:30px;border:1px solid #eee;border-radius:12px;">
-          <h2 style="color:#e85d04;">🍔 Order Confirmed!</h2>
+          <h2 style="color:#16a34a;">🍔 Order Confirmed!</h2>
           <p>Hi <b>${order.customerName}</b>, your order has been received.</p>
           <hr/>
           <h3>Order Summary</h3>
-          <pre style="background:#f9f9f9;padding:12px;border-radius:8px;">${itemsList}</pre>
+          <ul>${itemsList}</ul>
           <p><b>Total:</b> ₵${order.total}</p>
           <p><b>Delivery to:</b> ${order.location}</p>
           <p><b>Payment:</b> ${order.paymentMethod}</p>
@@ -114,6 +113,7 @@ async function sendOrderEmail(to, order) {
         </div>
       `
     });
+    console.log("✅ Order email sent to", to);
   } catch (err) {
     console.log("Email error:", err.message);
   }
@@ -121,11 +121,10 @@ async function sendOrderEmail(to, order) {
 
 async function sendStatusEmail(to, order) {
   try {
-    if (!EMAIL_USER || !EMAIL_PASS) return;
-    const statusColors = { processing: "#f48c06", ready: "#2d6cdf", delivered: "#2dc653", cancelled: "#e63946" };
+    const statusColors = { processing: "#f48c06", ready: "#2563eb", delivered: "#16a34a", cancelled: "#dc2626" };
     const color = statusColors[order.status] || "#888";
-    await transporter.sendMail({
-      from: `"🍔 ChopSpot" <${EMAIL_USER}>`,
+    await resend.emails.send({
+      from: "ChopSpot <onboarding@resend.dev>",
       to,
       subject: `Order Update — ${order.status.toUpperCase()}`,
       html: `
@@ -138,6 +137,7 @@ async function sendStatusEmail(to, order) {
         </div>
       `
     });
+    console.log("✅ Status email sent to", to);
   } catch (err) {
     console.log("Status email error:", err.message);
   }
@@ -156,12 +156,12 @@ async function seed() {
     const foodCount = await Food.countDocuments();
     if (foodCount === 0) {
       await Food.insertMany([
-        { name: "Jollof Rice",     price: 25, category: "Rice",       description: "Smoky West African jollof rice",    inStock: true, quantity: 50 },
-        { name: "Fufu & Soup",     price: 30, category: "Traditional", description: "Pounded fufu with light soup",      inStock: true, quantity: 30 },
-        { name: "Fried Rice",      price: 22, category: "Rice",       description: "Seasoned fried rice with veggies",  inStock: true, quantity: 40 },
-        { name: "Grilled Chicken", price: 45, category: "Protein",    description: "Juicy grilled chicken quarters",    inStock: true, quantity: 20 },
-        { name: "Waakye",          price: 18, category: "Traditional", description: "Rice and beans with shito",         inStock: true, quantity: 60 },
-        { name: "Burger",          price: 35, category: "Fast Food",  description: "Beef burger with chips",            inStock: true, quantity: 25 }
+        { name: "Jollof Rice",     price: 25, category: "Rice",        description: "Smoky West African jollof rice",   inStock: true, quantity: 50 },
+        { name: "Fufu & Soup",     price: 30, category: "Traditional", description: "Pounded fufu with light soup",     inStock: true, quantity: 30 },
+        { name: "Fried Rice",      price: 22, category: "Rice",        description: "Seasoned fried rice with veggies", inStock: true, quantity: 40 },
+        { name: "Grilled Chicken", price: 45, category: "Protein",     description: "Juicy grilled chicken quarters",   inStock: true, quantity: 20 },
+        { name: "Waakye",          price: 18, category: "Traditional", description: "Rice and beans with shito",        inStock: true, quantity: 60 },
+        { name: "Burger",          price: 35, category: "Fast Food",   description: "Beef burger with chips",           inStock: true, quantity: 25 }
       ]);
       console.log("🌱 Foods seeded");
     }
@@ -203,7 +203,7 @@ app.post("/api/login", async (req, res) => {
     const valid = await bcrypt.compare(password, user.password);
     if (!valid) return res.status(401).json({ message: "Invalid email or password" });
     const token = jwt.sign({ id: user._id, email: user.email, role: user.role }, JWT_SECRET, { expiresIn: "7d" });
-    res.json({ token, email: user.email, role: user.role });
+    res.json({ token, email: user.email, role: user.role, username: user.username, phone: user.phone });
   } catch (err) {
     console.log("Login error:", err.message);
     res.status(500).json({ message: "Login error" });
@@ -226,6 +226,20 @@ app.post("/api/change-password", authMiddleware, async (req, res) => {
   }
 });
 
+app.post("/api/update-profile", authMiddleware, async (req, res) => {
+  try {
+    const { username, phone } = req.body;
+    const user = await User.findByIdAndUpdate(
+      req.user.id,
+      { username, phone },
+      { new: true }
+    );
+    res.json({ message: "Profile updated", username: user.username, phone: user.phone });
+  } catch (err) {
+    res.status(500).json({ message: "Error updating profile" });
+  }
+});
+
 app.post("/api/forgot-password", async (req, res) => {
   try {
     const { email } = req.body;
@@ -234,21 +248,19 @@ app.post("/api/forgot-password", async (req, res) => {
     const tempPass = Math.random().toString(36).slice(-8);
     user.password  = await bcrypt.hash(tempPass, 12);
     await user.save();
-    if (EMAIL_USER && EMAIL_PASS) {
-      await transporter.sendMail({
-        from: `"🍔 ChopSpot" <${EMAIL_USER}>`,
-        to: email,
-        subject: "Password Reset",
-        html: `
-          <div style="font-family:Arial,sans-serif;max-width:500px;margin:auto;padding:30px;border:1px solid #eee;border-radius:12px;">
-            <h2>Password Reset</h2>
-            <p>Your temporary password is:</p>
-            <div style="font-size:24px;font-weight:bold;background:#f4f6f9;padding:16px;border-radius:8px;letter-spacing:4px;text-align:center;">${tempPass}</div>
-            <p style="margin-top:16px;color:#888;">Please login and change your password immediately.</p>
-          </div>
-        `
-      });
-    }
+    await resend.emails.send({
+      from: "ChopSpot <onboarding@resend.dev>",
+      to: email,
+      subject: "Password Reset",
+      html: `
+        <div style="font-family:Arial,sans-serif;max-width:500px;margin:auto;padding:30px;border:1px solid #eee;border-radius:12px;">
+          <h2>Password Reset</h2>
+          <p>Your temporary password is:</p>
+          <div style="font-size:24px;font-weight:bold;background:#f4f6f9;padding:16px;border-radius:8px;letter-spacing:4px;text-align:center;">${tempPass}</div>
+          <p style="margin-top:16px;color:#888;">Please login and change your password immediately.</p>
+        </div>
+      `
+    });
     res.json({ message: "Temporary password sent to your email" });
   } catch (err) {
     res.status(500).json({ message: "Error sending reset email" });
@@ -320,15 +332,26 @@ app.get("/api/orders", authMiddleware, adminMiddleware, async (req, res) => {
   }
 });
 
+app.get("/api/order/:id", authMiddleware, async (req, res) => {
+  try {
+    const order = await Order.findById(req.params.id);
+    if (!order) return res.status(404).json({ message: "Order not found" });
+    res.json(order);
+  } catch (err) {
+    res.status(500).json({ message: "Error fetching order" });
+  }
+});
+
 app.post("/api/order", authMiddleware, async (req, res) => {
   try {
-    const { customerName, customerEmail, location, paymentMethod, items, total } = req.body;
+    const { customerName, customerEmail, customerPhone, location, paymentMethod, items, total } = req.body;
     if (!customerName || !location || !items?.length || !total) {
       return res.status(400).json({ message: "Missing order details" });
     }
     const order = await Order.create({
       customerName,
       customerEmail: customerEmail || req.user.email,
+      customerPhone: customerPhone || "",
       location,
       paymentMethod: paymentMethod || "Cash",
       items,
@@ -439,17 +462,18 @@ app.get("/api/paystack/verify/:reference", authMiddleware, async (req, res) => {
 
 app.get("/api/test-email", async (req, res) => {
   try {
-    await transporter.sendMail({
-      from: `"ChopSpot" <${EMAIL_USER}>`,
-      to: EMAIL_USER,
-      subject: "Test Email",
-      html: "<h2>Email is working! ✅</h2>"
+    await resend.emails.send({
+      from: "ChopSpot <onboarding@resend.dev>",
+      to: "kingsleyahiagbenyo45@gmail.com",
+      subject: "Test Email ✅",
+      html: "<h2 style='color:#16a34a;'>Email is working! ✅</h2><p>ChopSpot email notifications are live.</p>"
     });
     res.json({ message: "Email sent successfully" });
   } catch (err) {
     res.status(500).json({ message: err.message });
   }
 });
+
 app.get("/", (req, res) => res.json({ status: "🚀 ChopSpot API running", version: "2.0.0" }));
 
 const PORT = process.env.PORT || 3000;
