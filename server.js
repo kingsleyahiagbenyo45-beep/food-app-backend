@@ -437,6 +437,19 @@ app.get("/api/paystack/verify/:reference", authMiddleware, async (req, res) => {
   }
 });
 
+app.get("/api/test-email", async (req, res) => {
+  try {
+    await transporter.sendMail({
+      from: `"ChopSpot" <${EMAIL_USER}>`,
+      to: EMAIL_USER,
+      subject: "Test Email",
+      html: "<h2>Email is working! ✅</h2>"
+    });
+    res.json({ message: "Email sent successfully" });
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+});
 app.get("/", (req, res) => res.json({ status: "🚀 ChopSpot API running", version: "2.0.0" }));
 
 const PORT = process.env.PORT || 3000;
