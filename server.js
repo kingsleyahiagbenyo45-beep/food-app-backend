@@ -107,7 +107,7 @@ async function sendOrderEmail(to, order) {
     const itemsList = order.items.map(i => `<li>${i.name} — ₵${i.price}</li>`).join("");
     await transporter.sendMail({
       from: "ChopSpot <kingsleyahiagbenyo45@gmail.com>",
-      to: user.email,
+      to,
       subject: `Order Confirmed — ₵${order.total}`,
       html: `
         <div style="font-family:Arial,sans-serif;max-width:500px;margin:auto;padding:30px;border:1px solid #eee;border-radius:12px;">
@@ -136,7 +136,7 @@ async function sendStatusEmail(to, order) {
     const color = statusColors[order.status] || "#888";
     await transporter.sendMail({
       from: "ChopSpot <kingsleyahiagbenyo45@gmail.com>",
-      to: user.email,
+      to,
       subject: `Order Update — ${order.status.toUpperCase()}`,
       html: `
         <div style="font-family:Arial,sans-serif;max-width:500px;margin:auto;padding:30px;border:1px solid #eee;border-radius:12px;">
@@ -468,6 +468,28 @@ app.get("/api/paystack/verify/:reference", authMiddleware, async (req, res) => {
     }
   } catch (err) {
     res.status(500).json({ message: "Verification failed" });
+  }
+});
+
+app.get("/api/test-one-email", async (req, res) => {
+  try {
+    const user = await User.findOne({ email: "test7@gmail.com" });
+
+    if (!user || !user.email) {
+      return res.status(404).json({ message: "User not found or no email" });
+    }
+
+    await transporter.sendMail({
+      from: `ChopSpot <${process.env.EMAIL_USER}>`,
+      to: user.email,
+      subject: "Single Email Test ✅",
+      html: `<h2>Hello ${user.username || "User"} 👋</h2><p>This is a test email.</p>`
+    });
+
+    res.json({ message: "Email sent to one user" });
+
+  } catch (err) {
+    res.status(500).json({ message: err.message });
   }
 });
 
