@@ -382,9 +382,19 @@ app.post("/api/order", authMiddleware, async (req, res) => {
 app.put("/api/order/:id", authMiddleware, adminMiddleware, async (req, res) => {
   try {
     const { status } = req.body;
-    const order = await Order.findByIdAndUpdate(req.params.id, { status }, { new: true });
+
+    const order = await Order.findByIdAndUpdate(
+      req.params.id,
+      { status },
+      { new: true }
+    );
+
     io.emit("orderUpdated", order);
-    if (order.customerEmail) sendStatusEmail(order.customerEmail, order);
+
+    if (order.customerEmail) {
+      await sendStatusEmail(order.customerEmail, order);
+    }
+
     res.json(order);
   } catch (err) {
     res.status(500).json({ message: "Update failed" });
@@ -468,51 +478,6 @@ app.get("/api/paystack/verify/:reference", authMiddleware, async (req, res) => {
     }
   } catch (err) {
     res.status(500).json({ message: "Verification failed" });
-  }
-});
-
-app.get("/api/test-one-email", async (req, res) => {
-  try {
-    const user = await User.findOne({ email: "test7@gmail.com" });
-
-    if (!user || !user.email) {
-      return res.status(404).json({ message: "User not found or no email" });
-    }
-
-    await transporter.sendMail({
-      from: `ChopSpot <${process.env.EMAIL_USER}>`,
-      to: user.email,
-      subject: "Single Email Test ✅",
-      html: `<h2>Hello ${user.username || "User"} 👋</h2><p>This is a test email.</p>`
-    });
-
-    res.json({ message: "Email sent to one user" });
-
-  } catch (err) {
-    res.status(500).json({ message: err.message });
-  }
-});
-
-app.get("/api/debug-users", async (req, res) => {
-  try {
-    const users = await User.find();
-    res.json(users);
-  } catch (err) {
-    res.status(500).json({ message: err.message });
-  }
-});
-
-app.get("/api/test-email", async (req, res) => {
-  try {
-    await transporter.sendMail({
-      from: "ChopSpot <kingsleyahiagbenyo45@gmail.com>",
-      to: "kingsleyahiagbenyo45@gmail.com",
-      subject: "Test Email ✅",
-      html: "<h2 style='color:#16a34a;'>Email is working! ✅</h2><p>ChopSpot email notifications are live.</p>"
-    });
-    res.json({ message: "Email sent successfully" });
-  } catch (err) {
-    res.status(500).json({ message: err.message });
   }
 });
 
