@@ -23,11 +23,17 @@ const EMAIL_USER = process.env.EMAIL_USER || "kingsleyahiagbenyo45@gmail.com";
 const EMAIL_PASS = process.env.EMAIL_PASS || "drszuewspigbhuum";
 
 const transporter = nodemailer.createTransport({
-  service: "gmail",
+  host: "smtp.gmail.com",
+  port: 587,
+  secure: false, // use TLS
   auth: {
     user: EMAIL_USER,
     pass: EMAIL_PASS,
   },
+  family: 4, // 🔥 forces IPv4 (fixes your error)
+  tls: {
+    rejectUnauthorized: false
+  }
 });
 
 // ✅ VERIFY EMAIL (helps in Render debugging)
