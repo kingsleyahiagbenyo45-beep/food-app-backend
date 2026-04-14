@@ -7,6 +7,8 @@ const jwt = require("jsonwebtoken");
 const { Resend } = require("resend");
 const axios = require("axios");
 const { Server } = require("socket.io");
+const nodemailer = require("nodemailer");
+
 
 const JWT_SECRET      = process.env.JWT_SECRET      || "chopspot_super_secret_jwt_key_2024_kingsley";
 const MONGO_URI       = process.env.MONGO_URI        || "mongodb+srv://Kingsley_Kekeli:dbPassword%24@cluster0.qgbdn7x.mongodb.net/foodapp?retryWrites=true&w=majority";
@@ -15,6 +17,17 @@ const PAYSTACK_SECRET = process.env.PAYSTACK_SECRET  || "sk_test_f8c72938263bab2
 const ADMIN_EMAIL     = process.env.ADMIN_EMAIL      || "admin@foodapp.com";
 const ADMIN_PASSWORD  = process.env.ADMIN_PASSWORD   || "Admin1234!";
 const FRONTEND_URL    = process.env.FRONTEND_URL     || "https://kingsleyahiagbenyo45-beep.github.io/food-app-frontend";
+
+
+const transporter = nodemailer.createTransport({
+  service: "gmail",
+  auth: {
+    user: process.env.kingsleyahiagbenyo45@gmail.com,
+    pass: process.env.drszuewspigbhuum,
+  },
+});
+
+
 
 const app    = express();
 const resend = new Resend(RESEND_API_KEY);
@@ -95,7 +108,7 @@ async function sendOrderEmail(to, order) {
   try {
     const itemsList = order.items.map(i => `<li>${i.name} — ₵${i.price}</li>`).join("");
     await resend.emails.send({
-      from: "ChopSpot <onboarding@resend.dev>",
+      from: "ChopSpot <kingsleyahiagbenyo45@gmail.com>",
       to,
       subject: `Order Confirmed — ₵${order.total}`,
       html: `
@@ -124,7 +137,7 @@ async function sendStatusEmail(to, order) {
     const statusColors = { processing: "#f48c06", ready: "#2563eb", delivered: "#16a34a", cancelled: "#dc2626" };
     const color = statusColors[order.status] || "#888";
     await resend.emails.send({
-      from: "ChopSpot <onboarding@resend.dev>",
+      from: "ChopSpot <kingsleyahiagbenyo45@gmail.com>",
       to,
       subject: `Order Update — ${order.status.toUpperCase()}`,
       html: `
@@ -249,7 +262,7 @@ app.post("/api/forgot-password", async (req, res) => {
     user.password  = await bcrypt.hash(tempPass, 12);
     await user.save();
     await resend.emails.send({
-      from: "ChopSpot <onboarding@resend.dev>",
+      from: "ChopSpot <kingsleyahiagbenyo45@gmail.com>",
       to: email,
       subject: "Password Reset",
       html: `
@@ -463,7 +476,7 @@ app.get("/api/paystack/verify/:reference", authMiddleware, async (req, res) => {
 app.get("/api/test-email", async (req, res) => {
   try {
     await resend.emails.send({
-      from: "ChopSpot <onboarding@resend.dev>",
+      from: "ChopSpot <kingsleyahiagbenyo45@gmail.com>"
       to: "kingsleyahiagbenyo45@gmail.com",
       subject: "Test Email ✅",
       html: "<h2 style='color:#16a34a;'>Email is working! ✅</h2><p>ChopSpot email notifications are live.</p>"
