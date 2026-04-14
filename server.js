@@ -107,7 +107,7 @@ async function sendOrderEmail(to, order) {
     const itemsList = order.items.map(i => `<li>${i.name} — ₵${i.price}</li>`).join("");
     await transporter.sendMail({
       from: "ChopSpot <kingsleyahiagbenyo45@gmail.com>",
-      to,
+      to: user.email,
       subject: `Order Confirmed — ₵${order.total}`,
       html: `
         <div style="font-family:Arial,sans-serif;max-width:500px;margin:auto;padding:30px;border:1px solid #eee;border-radius:12px;">
@@ -136,7 +136,7 @@ async function sendStatusEmail(to, order) {
     const color = statusColors[order.status] || "#888";
     await transporter.sendMail({
       from: "ChopSpot <kingsleyahiagbenyo45@gmail.com>",
-      to,
+      to: user.email,
       subject: `Order Update — ${order.status.toUpperCase()}`,
       html: `
         <div style="font-family:Arial,sans-serif;max-width:500px;margin:auto;padding:30px;border:1px solid #eee;border-radius:12px;">
@@ -261,7 +261,7 @@ app.post("/api/forgot-password", async (req, res) => {
     await user.save();
     await transporter.sendMail({
       from: "ChopSpot <kingsleyahiagbenyo45@gmail.com>",
-      to: email,
+      to: user.email,
       subject: "Password Reset",
       html: `
         <div style="font-family:Arial,sans-serif;max-width:500px;margin:auto;padding:30px;border:1px solid #eee;border-radius:12px;">
@@ -468,6 +468,15 @@ app.get("/api/paystack/verify/:reference", authMiddleware, async (req, res) => {
     }
   } catch (err) {
     res.status(500).json({ message: "Verification failed" });
+  }
+});
+
+app.get("/api/debug-users", async (req, res) => {
+  try {
+    const users = await User.find();
+    res.json(users);
+  } catch (err) {
+    res.status(500).json({ message: err.message });
   }
 });
 
