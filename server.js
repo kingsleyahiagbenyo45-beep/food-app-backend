@@ -4,15 +4,14 @@ const http = require("http");
 const mongoose = require("mongoose");
 const bcrypt = require("bcryptjs");
 const jwt = require("jsonwebtoken");
-const { Resend } = require("resend");
 const axios = require("axios");
 const { Server } = require("socket.io");
 const nodemailer = require("nodemailer");
 
+require("dotenv").config();
 
 const JWT_SECRET      = process.env.JWT_SECRET      || "chopspot_super_secret_jwt_key_2024_kingsley";
 const MONGO_URI       = process.env.MONGO_URI        || "mongodb+srv://Kingsley_Kekeli:dbPassword%24@cluster0.qgbdn7x.mongodb.net/foodapp?retryWrites=true&w=majority";
-const RESEND_API_KEY  = process.env.RESEND_API_KEY   || "re_LsbFJkGC_FkpNJ7cGW7AwmH6cRdiBpSh6";
 const PAYSTACK_SECRET = process.env.PAYSTACK_SECRET  || "sk_test_f8c72938263bab20bc65e734d2c24fbd3ab74324";
 const ADMIN_EMAIL     = process.env.ADMIN_EMAIL      || "admin@foodapp.com";
 const ADMIN_PASSWORD  = process.env.ADMIN_PASSWORD   || "Admin1234!";
@@ -22,15 +21,14 @@ const FRONTEND_URL    = process.env.FRONTEND_URL     || "https://kingsleyahiagbe
 const transporter = nodemailer.createTransport({
   service: "gmail",
   auth: {
-    user: process.env.kingsleyahiagbenyo45@gmail.com,
-    pass: process.env.drszuewspigbhuum,
+    user: process.env.EMAIL_USER,
+    pass: process.env.EMAIL_PASS,
   },
 });
 
 
 
 const app    = express();
-const resend = new Resend(RESEND_API_KEY);
 
 app.use(cors());
 app.use(express.json());
@@ -107,7 +105,7 @@ function adminMiddleware(req, res, next) {
 async function sendOrderEmail(to, order) {
   try {
     const itemsList = order.items.map(i => `<li>${i.name} — ₵${i.price}</li>`).join("");
-    await resend.emails.send({
+    await transporter.sendMail({
       from: "ChopSpot <kingsleyahiagbenyo45@gmail.com>",
       to,
       subject: `Order Confirmed — ₵${order.total}`,
@@ -136,7 +134,7 @@ async function sendStatusEmail(to, order) {
   try {
     const statusColors = { processing: "#f48c06", ready: "#2563eb", delivered: "#16a34a", cancelled: "#dc2626" };
     const color = statusColors[order.status] || "#888";
-    await resend.emails.send({
+    await transporter.sendMail({
       from: "ChopSpot <kingsleyahiagbenyo45@gmail.com>",
       to,
       subject: `Order Update — ${order.status.toUpperCase()}`,
@@ -261,7 +259,7 @@ app.post("/api/forgot-password", async (req, res) => {
     const tempPass = Math.random().toString(36).slice(-8);
     user.password  = await bcrypt.hash(tempPass, 12);
     await user.save();
-    await resend.emails.send({
+    await transporter.sendMail({
       from: "ChopSpot <kingsleyahiagbenyo45@gmail.com>",
       to: email,
       subject: "Password Reset",
@@ -475,8 +473,8 @@ app.get("/api/paystack/verify/:reference", authMiddleware, async (req, res) => {
 
 app.get("/api/test-email", async (req, res) => {
   try {
-    await resend.emails.send({
-      from: "ChopSpot <kingsleyahiagbenyo45@gmail.com>"
+    await transporter.sendMail({
+      from: "ChopSpot <kingsleyahiagbenyo45@gmail.com>",
       to: "kingsleyahiagbenyo45@gmail.com",
       subject: "Test Email ✅",
       html: "<h2 style='color:#16a34a;'>Email is working! ✅</h2><p>ChopSpot email notifications are live.</p>"
