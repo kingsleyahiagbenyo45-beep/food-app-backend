@@ -11,7 +11,7 @@ const dns = require("dns");
 
 require("dotenv").config();
 
-/* ================= FORCE IPv4 (CRITICAL FIX) ================= */
+/* ================= FORCE IPv4 ================= */
 dns.setDefaultResultOrder("ipv4first");
 
 /* ================= CONFIG ================= */
@@ -20,23 +20,29 @@ const MONGO_URI = process.env.MONGO_URI || "mongodb+srv://Kingsley_Kekeli:dbPass
 const PAYSTACK_SECRET = process.env.PAYSTACK_SECRET || "sk_test_f8c72938263bab20bc65e734d2c24fbd3ab74324";
 const ADMIN_EMAIL = process.env.ADMIN_EMAIL || "admin@foodapp.com";
 const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || "Admin1234!";
-const FRONTEND_URL = process.env.FRONTEND_URL || "https://github.io";
 
 const EMAIL_USER = process.env.EMAIL_USER || "kingsleyahiagbenyo45@gmail.com";
 const EMAIL_PASS = process.env.EMAIL_PASS || "drszuewspigbhuum";
 
-/* ================= EMAIL TRANSPORTER ================= */
+/* ================= EMAIL TRANSPORT (FIXED) ================= */
 const transporter = nodemailer.createTransport({
-  host: "://gmail.com",
+  host: "smtp.gmail.com",
   port: 587,
   secure: false,
   auth: {
     user: EMAIL_USER,
     pass: EMAIL_PASS,
   },
+  family: 4,
   tls: {
-    rejectUnauthorized: false
-  }
+    rejectUnauthorized: false,
+  },
+});
+
+/* ================= VERIFY EMAIL ================= */
+transporter.verify((err) => {
+  if (err) console.log("❌ Email config error:", err.message);
+  else console.log("✅ Email ready");
 });
 
 /* ================= APP ================= */
@@ -49,7 +55,7 @@ mongoose.connect(MONGO_URI, {
   serverSelectionTimeoutMS: 5000,
   socketTimeoutMS: 45000,
   maxPoolSize: 10,
-  family: 4
+  family: 4,
 })
 .then(() => console.log("🚀 MongoDB Connected"))
 .catch(err => console.log("❌ MongoDB Error:", err.message));
@@ -64,20 +70,12 @@ const userSchema = new mongoose.Schema({
   createdAt: { type: Date, default: Date.now }
 });
 
-/** 
- * 🔥 CRITICAL FIX FOR LOGIN: 
- * This middleware automatically hashes the password ONLY when it is changed.
- * This prevents the "double hashing" bug that breaks logins.
- */
+/* ✅ FIX: prevent double hashing */
 userSchema.pre("save", async function (next) {
   if (!this.isModified("password")) return next();
-  try {
-    const salt = await bcrypt.genSalt(12);
-    this.password = await bcrypt.hash(this.password, salt);
-    next();
-  } catch (err) {
-    next(err);
-  }
+  const salt = await bcrypt.genSalt(12);
+  this.password = await bcrypt.hash(this.password, salt);
+  next();
 });
 
 const foodSchema = new mongoose.Schema({
@@ -87,7 +85,7 @@ const foodSchema = new mongoose.Schema({
   description: String,
   image: String,
   inStock: Boolean,
-  quantity: Number
+  quantity: Number,
 });
 
 const orderSchema = new mongoose.Schema({
@@ -103,16 +101,16 @@ const orderSchema = new mongoose.Schema({
   status: {
     type: String,
     default: "pending",
-    enum: ["pending", "processing", "ready", "delivered", "cancelled"]
+    enum: ["pending", "processing", "ready", "delivered", "cancelled"],
   },
-  createdAt: { type: Date, default: Date.now }
+  createdAt: { type: Date, default: Date.now },
 });
 
 const User = mongoose.model("User", userSchema);
 const Food = mongoose.model("Food", foodSchema);
 const Order = mongoose.model("Order", orderSchema);
 
-/* ================= AUTH MIDDLEWARE ================= */
+/* ================= AUTH ================= */
 function authMiddleware(req, res, next) {
   const token = req.headers.authorization?.split(" ")[1];
   if (!token) return res.status(401).json({ message: "No token provided" });
@@ -125,63 +123,57 @@ function authMiddleware(req, res, next) {
   }
 }
 
-/* ================= LOGIN ROUTE ================= */
+/* ================= LOGIN ================= */
 app.post("/api/login", async (req, res) => {
   try {
     const { email, password } = req.body;
-    const user = await User.findOne({ email: email.toLowerCase() });
 
+    const user = await User.findOne({ email: email.toLowerCase() });
     if (!user) return res.status(400).json({ message: "Invalid email or password" });
 
-    const isMatch = await bcrypt.compare(password, user.password);
-    if (!isMatch) return res.status(400).json({ message: "Invalid email or password" });
+    const match = await bcrypt.compare(password, user.password);
+    if (!match) return res.status(400).json({ message: "Invalid email or password" });
 
-    const token = jwt.sign({ id: user._id, role: user.role }, JWT_SECRET, { expiresIn: "7d" });
+    const token = jwt.sign(
+      { id: user._id, role: user.role, email: user.email },
+      JWT_SECRET,
+      { expiresIn: "7d" }
+    );
 
-    res.json({
-      token,
-      user: { email: user.email, role: user.role, username: user.username }
-    });
+    res.json({ token, user });
   } catch (err) {
     res.status(500).json({ message: "Login error" });
   }
 });
 
-/* ================= FORGOT PASSWORD (FIXED) ================= */
+/* ================= FORGOT PASSWORD ================= */
 app.post("/api/forgot-password", async (req, res) => {
   try {
     const { email } = req.body;
+
     const user = await User.findOne({ email: email.toLowerCase() });
     if (!user) return res.status(404).json({ message: "Email not found" });
 
     const tempPass = Math.random().toString(36).slice(-8);
 
-    // ✅ FIXED: Just set the plain text password. 
-    // The userSchema.pre("save") middleware above will hash it automatically.
-    user.password = tempPass; 
+    user.password = tempPass;
     await user.save();
 
     await transporter.sendMail({
       from: `ChopSpot <${EMAIL_USER}>`,
       to: user.email,
-      subject: "Password Reset - ChopSpot",
-      html: `
-        <div style="font-family: sans-serif; padding: 20px;">
-          <h2>Your Temporary Password</h2>
-          <p>Use the password below to log in, then change it in your settings.</p>
-          <h1 style="background: #eee; padding: 10px; display: inline-block;">${tempPass}</h1>
-        </div>
-      `
+      subject: "Password Reset",
+      html: `<h2>Your temporary password: ${tempPass}</h2>`,
     });
 
-    res.json({ message: "Temporary password sent to your email" });
+    res.json({ message: "Temporary password sent to email" });
   } catch (err) {
     console.log("❌ Forgot password error:", err.message);
-    res.status(500).json({ message: "Error sending reset email" });
+    res.status(500).json({ message: "Email error" });
   }
 });
 
-/* ================= SERVER & SOCKETS ================= */
+/* ================= SOCKET ================= */
 const server = http.createServer(app);
 const io = new Server(server, { cors: { origin: "*" } });
 
@@ -194,4 +186,3 @@ const PORT = process.env.PORT || 3000;
 server.listen(PORT, "0.0.0.0", () =>
   console.log(`🚀 Server running on port ${PORT}`)
 );
-
