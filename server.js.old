@@ -1,3 +1,4 @@
+
 const express = require("express");
 const cors = require("cors");
 const http = require("http");
@@ -20,14 +21,14 @@ const MONGO_URI = process.env.MONGO_URI || "mongodb+srv://Kingsley_Kekeli:dbPass
 const PAYSTACK_SECRET = process.env.PAYSTACK_SECRET || "sk_test_f8c72938263bab20bc65e734d2c24fbd3ab74324";
 const ADMIN_EMAIL = process.env.ADMIN_EMAIL || "admin@foodapp.com";
 const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || "Admin1234!";
-const FRONTEND_URL = process.env.FRONTEND_URL || "https://github.io";
+const FRONTEND_URL = process.env.FRONTEND_URL || "https://kingsleyahiagbenyo45-beep.github.io/food-app-frontend";
 
 const EMAIL_USER = process.env.EMAIL_USER || "kingsleyahiagbenyo45@gmail.com";
 const EMAIL_PASS = process.env.EMAIL_PASS || "drszuewspigbhuum";
 
 /* ================= EMAIL TRANSPORTER ================= */
 const transporter = nodemailer.createTransport({
-  host: "://gmail.com",
+  host: "smtp.gmail.com",
   port: 587,
   secure: false,
   auth: {
@@ -38,6 +39,8 @@ const transporter = nodemailer.createTransport({
     rejectUnauthorized: false
   }
 });
+
+/* ❌ REMOVED transporter.verify() (CAUSES RENDER ISSUES) */
 
 /* ================= APP ================= */
 const app = express();
@@ -54,6 +57,10 @@ mongoose.connect(MONGO_URI, {
 .then(() => console.log("🚀 MongoDB Connected"))
 .catch(err => console.log("❌ MongoDB Error:", err.message));
 
+mongoose.connection.on("disconnected", () => console.log("⚠️ MongoDB disconnected..."));
+mongoose.connection.on("reconnected", () => console.log("✅ MongoDB reconnected"));
+mongoose.connection.on("error", (err) => console.log("❌ MongoDB error:", err.message));
+
 /* ================= MODELS ================= */
 const userSchema = new mongoose.Schema({
   email: { type: String, required: true, unique: true, lowercase: true, trim: true },
@@ -62,22 +69,6 @@ const userSchema = new mongoose.Schema({
   username: { type: String, default: "" },
   phone: { type: String, default: "" },
   createdAt: { type: Date, default: Date.now }
-});
-
-/** 
- * 🔥 CRITICAL FIX FOR LOGIN: 
- * This middleware automatically hashes the password ONLY when it is changed.
- * This prevents the "double hashing" bug that breaks logins.
- */
-userSchema.pre("save", async function (next) {
-  if (!this.isModified("password")) return next();
-  try {
-    const salt = await bcrypt.genSalt(12);
-    this.password = await bcrypt.hash(this.password, salt);
-    next();
-  } catch (err) {
-    next(err);
-  }
 });
 
 const foodSchema = new mongoose.Schema({
@@ -112,7 +103,7 @@ const User = mongoose.model("User", userSchema);
 const Food = mongoose.model("Food", foodSchema);
 const Order = mongoose.model("Order", orderSchema);
 
-/* ================= AUTH MIDDLEWARE ================= */
+/* ================= AUTH ================= */
 function authMiddleware(req, res, next) {
   const token = req.headers.authorization?.split(" ")[1];
   if (!token) return res.status(401).json({ message: "No token provided" });
@@ -125,63 +116,56 @@ function authMiddleware(req, res, next) {
   }
 }
 
-/* ================= LOGIN ROUTE ================= */
-app.post("/api/login", async (req, res) => {
-  try {
-    const { email, password } = req.body;
-    const user = await User.findOne({ email: email.toLowerCase() });
-
-    if (!user) return res.status(400).json({ message: "Invalid email or password" });
-
-    const isMatch = await bcrypt.compare(password, user.password);
-    if (!isMatch) return res.status(400).json({ message: "Invalid email or password" });
-
-    const token = jwt.sign({ id: user._id, role: user.role }, JWT_SECRET, { expiresIn: "7d" });
-
-    res.json({
-      token,
-      user: { email: user.email, role: user.role, username: user.username }
-    });
-  } catch (err) {
-    res.status(500).json({ message: "Login error" });
+function adminMiddleware(req, res, next) {
+  if (req.user?.role !== "admin") {
+    return res.status(403).json({ message: "Admin access required" });
   }
-});
+  next();
+}
 
-/* ================= FORGOT PASSWORD (FIXED) ================= */
-app.post("/api/forgot-password", async (req, res) => {
+/* ================= EMAIL ================= */
+async function sendOrderEmail(to, order) {
   try {
-    const { email } = req.body;
-    const user = await User.findOne({ email: email.toLowerCase() });
-    if (!user) return res.status(404).json({ message: "Email not found" });
-
-    const tempPass = Math.random().toString(36).slice(-8);
-
-    // ✅ FIXED: Just set the plain text password. 
-    // The userSchema.pre("save") middleware above will hash it automatically.
-    user.password = tempPass; 
-    await user.save();
+    const itemsList = order.items.map(i => `<li>${i.name} — ₵${i.price}</li>`).join("");
 
     await transporter.sendMail({
       from: `ChopSpot <${EMAIL_USER}>`,
-      to: user.email,
-      subject: "Password Reset - ChopSpot",
-      html: `
-        <div style="font-family: sans-serif; padding: 20px;">
-          <h2>Your Temporary Password</h2>
-          <p>Use the password below to log in, then change it in your settings.</p>
-          <h1 style="background: #eee; padding: 10px; display: inline-block;">${tempPass}</h1>
-        </div>
-      `
+      to,
+      subject: `Order Confirmed — ₵${order.total}`,
+      html: `<ul>${itemsList}</ul><p>Total: ₵${order.total}</p>`
     });
 
-    res.json({ message: "Temporary password sent to your email" });
+    console.log("✅ Order email sent:", to);
   } catch (err) {
-    console.log("❌ Forgot password error:", err.message);
-    res.status(500).json({ message: "Error sending reset email" });
+    console.log("❌ Order email error:", err.message);
   }
-});
+}
 
-/* ================= SERVER & SOCKETS ================= */
+async function sendStatusEmail(to, order) {
+  try {
+    const colorMap = {
+      processing: "#f48c06",
+      ready: "#2563eb",
+      delivered: "#16a34a",
+      cancelled: "#dc2626"
+    };
+
+    const color = colorMap[order.status] || "#888";
+
+    await transporter.sendMail({
+      from: `ChopSpot <${EMAIL_USER}>`,
+      to,
+      subject: `Order Update — ${order.status.toUpperCase()}`,
+      html: `<h2 style="color:${color}">${order.status.toUpperCase()}</h2>`
+    });
+
+    console.log("✅ Status email sent:", to);
+  } catch (err) {
+    console.log("❌ Status email error:", err.message);
+  }
+}
+
+/* ================= SERVER ================= */
 const server = http.createServer(app);
 const io = new Server(server, { cors: { origin: "*" } });
 
@@ -189,9 +173,34 @@ io.on("connection", (socket) => {
   console.log("⚡ Client connected:", socket.id);
 });
 
+/* ================= FORGOT PASSWORD ================= */
+app.post("/api/forgot-password", async (req, res) => {
+  try {
+    const { email } = req.body;
+
+    const user = await User.findOne({ email: email.toLowerCase() });
+    if (!user) return res.status(404).json({ message: "Email not found" });
+
+    const tempPass = Math.random().toString(36).slice(-8);
+    user.password = await bcrypt.hash(tempPass, 12);
+    await user.save();
+
+    await transporter.sendMail({
+      from: `ChopSpot <${EMAIL_USER}>`,
+      to: user.email,
+      subject: "Password Reset",
+      html: `<h2>${tempPass}</h2>`
+    });
+
+    res.json({ message: "Temporary password sent" });
+  } catch (err) {
+    console.log("❌ Forgot password error:", err.message);
+    res.status(500).json({ message: "Error sending reset email" });
+  }
+});
+
 /* ================= START ================= */
 const PORT = process.env.PORT || 3000;
 server.listen(PORT, "0.0.0.0", () =>
   console.log(`🚀 Server running on port ${PORT}`)
 );
-
