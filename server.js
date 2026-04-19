@@ -24,7 +24,7 @@ const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || "Admin1234!";
 const FRONTEND_URL = process.env.FRONTEND_URL || "https://kingsleyahiagbenyo45-beep.github.io/food-app-frontend";
 
 const EMAIL_USER = process.env.EMAIL_USER || "kingsleyahiagbenyo45@gmail.com";
-const EMAIL_PASS = process.env.EMAIL_PASS || "drszuewspigbhuum";
+const EMAIL_PASS = process.env.EMAIL_PASS || "arabdzjzloqoacdf";
 
 /* ================= EMAIL TRANSPORTER ================= */
 const transporter = nodemailer.createTransport({
