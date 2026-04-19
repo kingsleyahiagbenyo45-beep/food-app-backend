@@ -1,4 +1,3 @@
-
 const express = require("express");
 const cors = require("cors");
 const http = require("http");
@@ -8,46 +7,32 @@ const jwt = require("jsonwebtoken");
 const axios = require("axios");
 const { Server } = require("socket.io");
 const nodemailer = require("nodemailer");
-const dns = require("dns");
 
 require("dotenv").config();
 
-/* ================= FORCE IPv4 (CRITICAL FIX) ================= */
-dns.setDefaultResultOrder("ipv4first");
+const JWT_SECRET      = process.env.JWT_SECRET      || "chopspot_super_secret_jwt_key_2024_kingsley";
+const MONGO_URI       = process.env.MONGO_URI        || "mongodb+srv://Kingsley_Kekeli:dbPassword%24@cluster0.qgbdn7x.mongodb.net/foodapp?retryWrites=true&w=majority";
+const PAYSTACK_SECRET = process.env.PAYSTACK_SECRET  || "sk_test_f8c72938263bab20bc65e734d2c24fbd3ab74324";
+const ADMIN_EMAIL     = process.env.ADMIN_EMAIL      || "admin@foodapp.com";
+const ADMIN_PASSWORD  = process.env.ADMIN_PASSWORD   || "Admin1234!";
+const FRONTEND_URL    = process.env.FRONTEND_URL     || "https://kingsleyahiagbenyo45-beep.github.io/food-app-frontend";
 
-/* ================= CONFIG ================= */
-const JWT_SECRET = process.env.JWT_SECRET || "chopspot_super_secret_jwt_key_2024_kingsley";
-const MONGO_URI = process.env.MONGO_URI || "mongodb+srv://Kingsley_Kekeli:dbPassword%24@cluster0.qgbdn7x.mongodb.net/foodapp?retryWrites=true&w=majority";
-const PAYSTACK_SECRET = process.env.PAYSTACK_SECRET || "sk_test_f8c72938263bab20bc65e734d2c24fbd3ab74324";
-const ADMIN_EMAIL = process.env.ADMIN_EMAIL || "admin@foodapp.com";
-const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || "Admin1234!";
-const FRONTEND_URL = process.env.FRONTEND_URL || "https://kingsleyahiagbenyo45-beep.github.io/food-app-frontend";
 
-const EMAIL_USER = process.env.EMAIL_USER || "kingsleyahiagbenyo45@gmail.com";
-const EMAIL_PASS = process.env.EMAIL_PASS || "drszuewspigbhuum";
-
-/* ================= EMAIL TRANSPORTER ================= */
 const transporter = nodemailer.createTransport({
-  host: "smtp.gmail.com",
-  port: 587,
-  secure: false,
+  service: "gmail",
   auth: {
-    user: EMAIL_USER,
-    pass: EMAIL_PASS,
+    user: process.env.EMAIL_USER,
+    pass: process.env.EMAIL_PASS,
   },
-  tls: {
-    rejectUnauthorized: false
-  }
 });
 
-/* ❌ REMOVED transporter.verify() (CAUSES RENDER ISSUES) */
 
-/* ================= APP ================= */
-const app = express();
+
+const app    = express();
+
 app.use(cors());
 app.use(express.json());
 
-/* ================= DB ================= */
 mongoose.connect(MONGO_URI, {
   serverSelectionTimeoutMS: 5000,
   socketTimeoutMS: 45000,
@@ -58,60 +43,54 @@ mongoose.connect(MONGO_URI, {
 .catch(err => console.log("❌ MongoDB Error:", err.message));
 
 mongoose.connection.on("disconnected", () => console.log("⚠️ MongoDB disconnected..."));
-mongoose.connection.on("reconnected", () => console.log("✅ MongoDB reconnected"));
-mongoose.connection.on("error", (err) => console.log("❌ MongoDB error:", err.message));
+mongoose.connection.on("reconnected",  () => console.log("✅ MongoDB reconnected"));
+mongoose.connection.on("error", (err)  => console.log("❌ MongoDB error:", err.message));
 
-/* ================= MODELS ================= */
 const userSchema = new mongoose.Schema({
-  email: { type: String, required: true, unique: true, lowercase: true, trim: true },
-  password: { type: String, required: true },
-  role: { type: String, default: "user", enum: ["user", "admin"] },
-  username: { type: String, default: "" },
-  phone: { type: String, default: "" },
+  email:     { type: String, required: true, unique: true, lowercase: true, trim: true },
+  password:  { type: String, required: true },
+  role:      { type: String, default: "user", enum: ["user", "admin"] },
+  username:  { type: String, default: "" },
+  phone:     { type: String, default: "" },
   createdAt: { type: Date, default: Date.now }
 });
 
 const foodSchema = new mongoose.Schema({
-  name: String,
-  price: Number,
-  category: String,
-  description: String,
-  image: String,
-  inStock: Boolean,
-  quantity: Number
+  name:        { type: String, required: true },
+  price:       { type: Number, required: true },
+  category:    { type: String, default: "General" },
+  description: { type: String, default: "" },
+  image:       { type: String, default: "" },
+  inStock:     { type: Boolean, default: true },
+  quantity:    { type: Number, default: 100 }
 });
 
 const orderSchema = new mongoose.Schema({
-  customerName: String,
-  customerEmail: String,
-  customerPhone: String,
-  location: String,
-  paymentMethod: String,
-  paymentStatus: String,
-  paystackRef: String,
-  items: Array,
-  total: Number,
-  status: {
-    type: String,
-    default: "pending",
-    enum: ["pending", "processing", "ready", "delivered", "cancelled"]
-  },
-  createdAt: { type: Date, default: Date.now }
+  customerName:  { type: String, required: true },
+  customerEmail: { type: String, default: "" },
+  customerPhone: { type: String, default: "" },
+  location:      { type: String, required: true },
+  paymentMethod: { type: String, default: "Cash" },
+  paymentStatus: { type: String, default: "pending", enum: ["pending", "paid", "failed"] },
+  paystackRef:   { type: String, default: "" },
+  items:         { type: Array, default: [] },
+  total:         { type: Number, required: true },
+  status:        { type: String, default: "pending", enum: ["pending", "processing", "ready", "delivered", "cancelled"] },
+  createdAt:     { type: Date, default: Date.now }
 });
 
-const User = mongoose.model("User", userSchema);
-const Food = mongoose.model("Food", foodSchema);
+const User  = mongoose.model("User",  userSchema);
+const Food  = mongoose.model("Food",  foodSchema);
 const Order = mongoose.model("Order", orderSchema);
 
-/* ================= AUTH ================= */
 function authMiddleware(req, res, next) {
   const token = req.headers.authorization?.split(" ")[1];
   if (!token) return res.status(401).json({ message: "No token provided" });
-
   try {
-    req.user = jwt.verify(token, JWT_SECRET);
+    const decoded = jwt.verify(token, JWT_SECRET);
+    req.user = decoded;
     next();
-  } catch {
+  } catch (err) {
     return res.status(401).json({ message: "Invalid or expired token" });
   }
 }
@@ -123,54 +102,64 @@ function adminMiddleware(req, res, next) {
   next();
 }
 
-/* ================= EMAIL ================= */
 async function sendOrderEmail(to, order) {
   try {
     const itemsList = order.items.map(i => `<li>${i.name} — ₵${i.price}</li>`).join("");
-
     await transporter.sendMail({
-      from: `ChopSpot <${EMAIL_USER}>`,
+      from: "ChopSpot <kingsleyahiagbenyo45@gmail.com>",
       to,
       subject: `Order Confirmed — ₵${order.total}`,
-      html: `<ul>${itemsList}</ul><p>Total: ₵${order.total}</p>`
+      html: `
+        <div style="font-family:Arial,sans-serif;max-width:500px;margin:auto;padding:30px;border:1px solid #eee;border-radius:12px;">
+          <h2 style="color:#16a34a;">🍔 Order Confirmed!</h2>
+          <p>Hi <b>${order.customerName}</b>, your order has been received.</p>
+          <hr/>
+          <h3>Order Summary</h3>
+          <ul>${itemsList}</ul>
+          <p><b>Total:</b> ₵${order.total}</p>
+          <p><b>Delivery to:</b> ${order.location}</p>
+          <p><b>Payment:</b> ${order.paymentMethod}</p>
+          <hr/>
+          <p style="color:#888;font-size:12px;">Thank you for ordering with us!</p>
+        </div>
+      `
     });
-
-    console.log("✅ Order email sent:", to);
+    console.log("✅ Order email sent to", to);
   } catch (err) {
-    console.log("❌ Order email error:", err.message);
+    console.log("Email error:", err.message);
   }
 }
 
 async function sendStatusEmail(to, order) {
   try {
-    const colorMap = {
-      processing: "#f48c06",
-      ready: "#2563eb",
-      delivered: "#16a34a",
-      cancelled: "#dc2626"
-    };
-
-    const color = colorMap[order.status] || "#888";
-
+    const statusColors = { processing: "#f48c06", ready: "#2563eb", delivered: "#16a34a", cancelled: "#dc2626" };
+    const color = statusColors[order.status] || "#888";
     await transporter.sendMail({
-      from: `ChopSpot <${EMAIL_USER}>`,
+      from: "ChopSpot <kingsleyahiagbenyo45@gmail.com>",
       to,
       subject: `Order Update — ${order.status.toUpperCase()}`,
-      html: `<h2 style="color:${color}">${order.status.toUpperCase()}</h2>`
+      html: `
+        <div style="font-family:Arial,sans-serif;max-width:500px;margin:auto;padding:30px;border:1px solid #eee;border-radius:12px;">
+          <h2 style="color:${color};">Order Status Update</h2>
+          <p>Hi <b>${order.customerName}</b>, your order status has changed.</p>
+          <div style="background:${color};color:white;padding:16px;border-radius:10px;text-align:center;font-size:20px;font-weight:bold;">
+            ${order.status.toUpperCase()}
+          </div>
+        </div>
+      `
     });
-
-    console.log("✅ Status email sent:", to);
+    console.log("✅ Status email sent to", to);
   } catch (err) {
-    console.log("❌ Status email error:", err.message);
+    console.log("Status email error:", err.message);
   }
 }
 
-/* ================= SERVER ================= */
 const server = http.createServer(app);
 const io = new Server(server, { cors: { origin: "*" } });
 
 io.on("connection", (socket) => {
   console.log("⚡ Client connected:", socket.id);
+  socket.on("disconnect", () => console.log("🔌 Client disconnected:", socket.id));
 });
 
 async function seed() {
@@ -492,36 +481,8 @@ app.get("/api/paystack/verify/:reference", authMiddleware, async (req, res) => {
   }
 });
 
+app.get("/", (req, res) => res.json({ status: "🚀 ChopSpot API running", version: "2.0.0" }));
 
-
-/* ================= FORGOT PASSWORD ================= */
-app.post("/api/forgot-password", async (req, res) => {
-  try {
-    const { email } = req.body;
-
-    const user = await User.findOne({ email: email.toLowerCase() });
-    if (!user) return res.status(404).json({ message: "Email not found" });
-
-    const tempPass = Math.random().toString(36).slice(-8);
-    user.password = await bcrypt.hash(tempPass, 12);
-    await user.save();
-
-    await transporter.sendMail({
-      from: `ChopSpot <${EMAIL_USER}>`,
-      to: user.email,
-      subject: "Password Reset",
-      html: `<h2>${tempPass}</h2>`
-    });
-
-    res.json({ message: "Temporary password sent" });
-  } catch (err) {
-    console.log("❌ Forgot password error:", err.message);
-    res.status(500).json({ message: "Error sending reset email" });
-  }
-});
-
-/* ================= START ================= */
 const PORT = process.env.PORT || 3000;
-server.listen(PORT, "0.0.0.0", () =>
-  console.log(`🚀 Server running on port ${PORT}`)
-);
+server.listen(PORT, "0.0.0.0", () => console.log(`🚀 Server running on port ${PORT}`));
+
