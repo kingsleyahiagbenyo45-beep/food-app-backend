@@ -345,6 +345,15 @@ app.delete("/api/foods/:id", authMiddleware, adminMiddleware, async (req, res) =
   }
 });
 
+app.get("/api/my-orders", authMiddleware, async (req, res) => {
+  try {
+    const orders = await Order.find({ customerEmail: req.user.email }).sort({ createdAt: -1 });
+    res.json(orders);
+  } catch (err) {
+    res.status(500).json({ message: "Error fetching orders" });
+  }
+});
+
 app.get("/api/orders", authMiddleware, adminMiddleware, async (req, res) => {
   try {
     const orders = await Order.find().sort({ createdAt: -1 });
